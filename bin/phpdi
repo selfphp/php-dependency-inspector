@@ -1,0 +1,15 @@
+#!/usr/bin/env php
+<?php
+
+require __DIR__ . '/../vendor/autoload.php';
+
+use Symfony\Component\Console\Application;
+use PhpDependencyInspector\Cli\AnalyseCommand;
+use PhpDependencyInspector\Cli\AuditCommand;
+
+$application = new Application('PHP Dependency Inspector');
+
+$application->add(new AnalyseCommand());
+$application->add(new AuditCommand());
+
+$application->run();

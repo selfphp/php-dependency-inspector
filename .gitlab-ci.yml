@@ -1,0 +1,18 @@
+stages:
+  - audit
+
+dependency_audit:
+  stage: audit
+  image: php:8.2
+  before_script:
+    - apt-get update && apt-get install -y unzip git curl
+    - curl -sS https://getcomposer.org/installer | php
+    - php composer.phar install
+  script:
+    - php bin/phpdi audit \
+      --output=build/dependency-report.md \
+      --output-json=build/dependency-report.json \
+      --threshold=0
+  artifacts:
+    paths:
+      - build/dependency-report.*

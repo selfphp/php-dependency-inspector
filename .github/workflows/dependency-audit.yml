@@ -1,0 +1,32 @@
+name: Dependency Audit
+
+on:
+  push:
+    paths:
+      - '**.php'
+      - 'composer.*'
+  pull_request:
+
+jobs:
+  audit:
+    name: Check PHP Dependencies
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up PHP
+        uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.2'
+
+      - name: Install Composer dependencies
+        run: composer install
+
+      - name: Run php-dependency-inspector
+        run: |
+          php bin/phpdi audit \
+            --output=build/dependency-report.md \
+            --output-json=build/dependency-report.json \
+            --threshold=0
