@@ -5,6 +5,9 @@ namespace PhpDependencyInspector\Audit;
 class AuditResult
 {
     /** @var string[] */
+    public array $usedPackages = [];
+
+    /** @var string[] */
     public array $unusedPackages = [];
 
     /** @var OutdatedPackage[] */

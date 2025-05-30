@@ -25,7 +25,9 @@ class AuditCommand extends Command
             ->addOption('output-json', null, InputOption::VALUE_REQUIRED, 'Path to save a JSON report to (optional)')
             ->addOption('threshold', null, InputOption::VALUE_REQUIRED, 'Threshold for unused packages to trigger failure (optional)', 0)
             ->addOption('exit-on-unused', null, InputOption::VALUE_NONE, 'Exit with code 1 if unused packages exceed threshold')
-            ->addOption('exit-on-outdated', null, InputOption::VALUE_REQUIRED, 'Exit with code 2 if outdated packages found (none, minor, major)', 'none');
+            ->addOption('exit-on-outdated', null, InputOption::VALUE_REQUIRED, 'Exit with code 2 if outdated packages found (none, minor, major)', 'none')
+            ->addOption('max-outdated', null, InputOption::VALUE_REQUIRED, 'Maximum number of outdated packages allowed before failing (optional)')
+            ->addOption('fail-if-total-packages-exceeds', null, InputOption::VALUE_REQUIRED, 'Fail if total composer packages exceed this number');
     }
 
     protected function execute(InputInterface $input, OutputInterface $output): int
@@ -36,9 +38,17 @@ class AuditCommand extends Command
         $threshold = (int) $input->getOption('threshold');
         $failOnUnused = $input->getOption('exit-on-unused');
         $failOnOutdated = $input->getOption('exit-on-outdated');
+        $maxOutdated = $input->getOption('max-outdated');
+        $maxOutdated = is_numeric($maxOutdated) ? (int) $maxOutdated : null;
+        $maxTotalPackages = $input->getOption('fail-if-total-packages-exceeds');
+        $maxTotalPackages = is_numeric($maxTotalPackages) ? (int) $maxTotalPackages : null;
+
+        if (!$output->isDecorated()) {
+            $output->getFormatter()->setDecorated(false);
+        }
 
         if (!is_dir($path)) {
-            $output->writeln('<error>❌ Invalid path specified.</error>');
+            $output->writeln('❌ Invalid path specified.');
             return Command::FAILURE;
         }
 
@@ -67,9 +77,16 @@ class AuditCommand extends Command
 
         try {
             $outdatedChecker = new OutdatedPackageChecker();
-            $audit->outdatedPackages = $outdatedChecker->getOutdatedPackages();
+            $rawOutdated = $outdatedChecker->getOutdatedPackages();
+            foreach ($rawOutdated as $entry) {
+                $audit->outdatedPackages[] = new OutdatedPackage(
+                    $entry['name'],
+                    $entry['version'],
+                    $entry['latest']
+                );
+            }
         } catch (\Throwable $e) {
-            $output->writeln("<comment>⚠ Could not retrieve outdated packages: {$e->getMessage()}</comment>");
+            $output->writeln("⚠ Could not retrieve outdated packages: {$e->getMessage()}");
         }
 
         if ($outputFile) {
@@ -101,6 +118,33 @@ class AuditCommand extends Command
                 ], $audit->outdatedPackages),
             ];
             file_put_contents($outputJson, json_encode($jsonData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+        }
+
+        $major = array_filter($audit->outdatedPackages, fn($p) => $p->isMajorUpdate());
+        $minor = array_filter($audit->outdatedPackages, fn($p) => !$p->isMajorUpdate() && $p->isMinorUpdate());
+
+        if (!empty($major)) {
+            $output->writeln($output->isDecorated() ? "\n<fg=red>🔺 Major updates available:</>" : "\nMAJOR updates available:");
+            foreach ($major as $pkg) {
+                $output->writeln(" - {$pkg->name} {$pkg->currentVersion} → {$pkg->latestVersion}");
+            }
+        }
+
+        if (!empty($minor)) {
+            $output->writeln($output->isDecorated() ? "\n<fg=yellow>⚠ Minor updates available:</>" : "\nMINOR updates available:");
+            foreach ($minor as $pkg) {
+                $output->writeln(" - {$pkg->name} {$pkg->currentVersion} → {$pkg->latestVersion}");
+            }
+        }
+
+        if ($maxOutdated !== null && count($audit->outdatedPackages) > $maxOutdated) {
+            $output->writeln("❌ Too many outdated packages: " . count($audit->outdatedPackages) . " (max allowed: $maxOutdated)");
+            return 2;
+        }
+
+        if ($maxTotalPackages !== null && count($packages) > $maxTotalPackages) {
+            $output->writeln("❌ Too many total packages: " . count($packages) . " (max allowed: $maxTotalPackages)");
+            return 3;
         }
 
         return $audit->getExitCode($failOnUnused, $failOnOutdated, $threshold);
