@@ -4,6 +4,12 @@
 
 ---
 
+## ⌛ Install
+
+```bash
+composer require selfphp/php-dependency-inspector
+```
+
 ## 🚀 Commands
 
 ### 🔍 analyse
