@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.3.0] – 2025-06-11
+
+### Changed
+- Removed `symfony/finder` as dependency
+
+### Added
+- Introduced custom `FileSearch` utility for recursive file listing and filtering
+
+### Improved
+- `UsageScanner` now uses internal `FileSearch` logic
+- Codebase is now free of all Symfony components
+- Improved cross-platform compatibility and reduced external dependency footprint
+
+
 ## [1.2.0] – 2025-06-11
 
 ### Changed
