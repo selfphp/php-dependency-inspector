@@ -2,6 +2,8 @@
 
 namespace PhpDependencyInspector\Composer;
 
+use PhpDependencyInspector\Support\ComposerHelper;
+
 class OutdatedPackageChecker
 {
     /**
@@ -11,65 +13,17 @@ class OutdatedPackageChecker
      */
     public function getOutdatedPackages(): array
     {
-        $composerBin = $this->findComposerBinary();
+        // Composer-Befehl über Helper ausführen
+        $result = ComposerHelper::run(['outdated', '--format=json']);
 
-        $cmd = [$composerBin, 'outdated', '--format=json'];
+        // Ergebnis dekodieren
+        $data = json_decode($result['output'], true);
 
-        $descriptorSpec = [
-            1 => ['pipe', 'w'], // stdout
-            2 => ['pipe', 'w'], // stderr
-        ];
-
-        $process = proc_open($cmd, $descriptorSpec, $pipes, getcwd());
-
-        if (!\is_resource($process)) {
-            throw new \RuntimeException('Failed to start composer process.');
+        if (!is_array($data) || !isset($data['installed'])) {
+            throw new \RuntimeException("Unexpected composer output.");
         }
 
-        $output = stream_get_contents($pipes[1]);
-        $errorOutput = stream_get_contents($pipes[2]);
-        fclose($pipes[1]);
-        fclose($pipes[2]);
-
-        $exitCode = proc_close($process);
-
-        if ($exitCode !== 0) {
-            throw new \RuntimeException("composer outdated failed: " . trim($errorOutput));
-        }
-
-        $data = json_decode($output, true);
-        return $data['installed'] ?? [];
-    }
-
-    /**
-     * Tries to locate the composer binary (global or local).
-     *
-     * @return string
-     */
-    private function findComposerBinary(): string
-    {
-        // Plattformunabhängiges binary-finden
-        $isWindows = strtoupper(substr(PHP_OS, 0, 3)) === 'WIN';
-        $whichCmd = $isWindows ? 'where' : 'which';
-
-        $paths = shell_exec($whichCmd . ' composer');
-
-        if ($paths) {
-            $lines = array_filter(array_map('trim', explode(PHP_EOL, $paths)));
-            foreach ($lines as $line) {
-                if (is_file($line) && is_executable($line)) {
-                    return $line;
-                }
-            }
-        }
-
-        // Fallback: composer.phar im Projektordner
-        $localPhar = getcwd() . '/composer.phar';
-        if (file_exists($localPhar)) {
-            return PHP_BINARY . ' ' . escapeshellarg($localPhar);
-        }
-
-        throw new \RuntimeException('Composer could not be found. Please make sure it is installed and accessible.');
+        return $data['installed'];
     }
 
     /**
