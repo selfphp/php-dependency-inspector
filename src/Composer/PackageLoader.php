@@ -16,7 +16,9 @@ class PackageLoader
         $data = json_decode(file_get_contents($lockPath), true);
 
         $packages = [];
-        foreach (array_merge($data['packages'] ?? [], $data['packages-dev'] ?? []) as $package) {
+        // only production dependencies
+        foreach ($data['packages'] ?? [] as $package) {
+            //  foreach (array_merge($data['packages'] ?? [], $data['packages-dev'] ?? []) as $package) {
             $name = $package['name'];
             $autoload = $package['autoload']['psr-4'] ?? [];
 

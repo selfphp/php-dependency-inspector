@@ -5,6 +5,20 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [1.4.0] – 2025-06-11
+
+### Changed
+- `PackageLoader` now automatically excludes `require-dev` packages from analysis
+- Dev-only dependencies like `phpunit/phpunit` are no longer falsely reported as unused
+- Autoload namespaces from `packages-dev` in `composer.lock` are now ignored
+
+### Improved
+- More accurate audit results by filtering out development-only packages
+
+### Fixed
+- Incorrect detection of unused dev dependencies (e.g., test frameworks)
+
+
 ## [1.3.0] – 2025-06-11
 
 ### Changed

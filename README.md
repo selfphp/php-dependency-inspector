@@ -1,3 +1,4 @@
+
 # PHP Dependency Inspector
 
 **CLI tool for analyzing, cleaning up, and monitoring Composer dependencies in PHP projects.**
@@ -50,6 +51,15 @@ php bin/phpdi audit --output=report.md [--path=...] [--threshold=0] [--exit-on-u
 ```bash
 php bin/phpdi audit --output=report.md --threshold=3 --exit-on-unused --exit-on-outdated=minor
 ```
+
+---
+
+## ℹ️ Analysis Logic
+
+As of `v1.4.0`, the tool **only analyzes production dependencies** listed under `require` in `composer.json`.  
+Development packages from `require-dev` are excluded from usage checks.
+
+This ensures accurate reports for production readiness and avoids false positives from test-related packages like `phpunit/phpunit`.
 
 ---
 
