@@ -3,13 +3,15 @@
 
 require __DIR__ . '/../vendor/autoload.php';
 
-use Symfony\Component\Console\Application;
+use Selfphp\Console\ConsoleApp;
+use Selfphp\Console\Command\HelpCommand;
 use PhpDependencyInspector\Cli\AnalyseCommand;
 use PhpDependencyInspector\Cli\AuditCommand;
 
-$application = new Application('PHP Dependency Inspector');
+$application = new ConsoleApp();
 
-$application->add(new AnalyseCommand());
-$application->add(new AuditCommand());
+$application->register(new AnalyseCommand());
+$application->register(new AuditCommand());
+$application->register(new HelpCommand($application));
 
-$application->run();
+exit($application->run($argv));

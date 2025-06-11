@@ -2,54 +2,70 @@
 
 namespace PhpDependencyInspector\Cli;
 
+use Selfphp\Console\Contract\CommandInterface;
 use PhpDependencyInspector\Analyzer\UsageScanner;
-use PhpDependencyInspector\Composer\OutdatedPackageChecker;
 use PhpDependencyInspector\Composer\PackageLoader;
+use PhpDependencyInspector\Composer\OutdatedPackageChecker;
 use PhpDependencyInspector\Audit\AuditResult;
 use PhpDependencyInspector\Audit\OutdatedPackage;
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Output\OutputInterface;
 
-class AuditCommand extends Command
+class AuditCommand implements CommandInterface
 {
-    protected static $defaultName = 'audit';
-    protected static $defaultDescription = 'Performs an automated audit of Composer dependencies (for cron/CI).';
-
-    protected function configure(): void
+    public function getName(): string
     {
-        $this
-            ->addOption('path', null, InputOption::VALUE_REQUIRED, 'Path to the project root (defaults to current working directory)', getcwd())
-            ->addOption('output', null, InputOption::VALUE_REQUIRED, 'Path to save a markdown report to (optional)')
-            ->addOption('output-json', null, InputOption::VALUE_REQUIRED, 'Path to save a JSON report to (optional)')
-            ->addOption('threshold', null, InputOption::VALUE_REQUIRED, 'Threshold for unused packages to trigger failure (optional)', 0)
-            ->addOption('exit-on-unused', null, InputOption::VALUE_NONE, 'Exit with code 1 if unused packages exceed threshold')
-            ->addOption('exit-on-outdated', null, InputOption::VALUE_REQUIRED, 'Exit with code 2 if outdated packages found (none, minor, major)', 'none')
-            ->addOption('max-outdated', null, InputOption::VALUE_REQUIRED, 'Maximum number of outdated packages allowed before failing (optional)')
-            ->addOption('fail-if-total-packages-exceeds', null, InputOption::VALUE_REQUIRED, 'Fail if total composer packages exceed this number');
+        return 'audit';
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
+    public function getDescription(): string
     {
-        $path = $input->getOption('path');
-        $outputFile = $input->getOption('output');
-        $outputJson = $input->getOption('output-json');
-        $threshold = (int) $input->getOption('threshold');
-        $failOnUnused = $input->getOption('exit-on-unused');
-        $failOnOutdated = $input->getOption('exit-on-outdated');
-        $maxOutdated = $input->getOption('max-outdated');
-        $maxOutdated = is_numeric($maxOutdated) ? (int) $maxOutdated : null;
-        $maxTotalPackages = $input->getOption('fail-if-total-packages-exceeds');
-        $maxTotalPackages = is_numeric($maxTotalPackages) ? (int) $maxTotalPackages : null;
+        return 'Performs an automated audit of Composer dependencies (for cron/CI).';
+    }
 
-        if (!$output->isDecorated()) {
-            $output->getFormatter()->setDecorated(false);
+    public function run(array $args): int
+    {
+        echo "[audit] Starting audit ...\n";
+
+        // Default values
+        $path = getcwd();
+        $outputFile = null;
+        $outputJson = null;
+        $threshold = 0;
+        $failOnUnused = false;
+        $failOnOutdated = 'none';
+        $maxOutdated = null;
+        $maxTotalPackages = null;
+
+        // Very basic argument parsing
+        foreach ($args as $i => $arg) {
+            if ($arg === '--path' && isset($args[$i + 1])) {
+                $path = $args[$i + 1];
+            }
+            if ($arg === '--output' && isset($args[$i + 1])) {
+                $outputFile = $args[$i + 1];
+            }
+            if ($arg === '--output-json' && isset($args[$i + 1])) {
+                $outputJson = $args[$i + 1];
+            }
+            if ($arg === '--threshold' && isset($args[$i + 1])) {
+                $threshold = (int) $args[$i + 1];
+            }
+            if ($arg === '--exit-on-unused') {
+                $failOnUnused = true;
+            }
+            if ($arg === '--exit-on-outdated' && isset($args[$i + 1])) {
+                $failOnOutdated = $args[$i + 1];
+            }
+            if ($arg === '--max-outdated' && isset($args[$i + 1]) && is_numeric($args[$i + 1])) {
+                $maxOutdated = (int) $args[$i + 1];
+            }
+            if ($arg === '--fail-if-total-packages-exceeds' && isset($args[$i + 1]) && is_numeric($args[$i + 1])) {
+                $maxTotalPackages = (int) $args[$i + 1];
+            }
         }
 
         if (!is_dir($path)) {
-            $output->writeln('❌ Invalid path specified.');
-            return Command::FAILURE;
+            echo "[error] Invalid path: $path\n";
+            return 1;
         }
 
         $packageLoader = new PackageLoader();
@@ -76,9 +92,10 @@ class AuditCommand extends Command
         }
 
         try {
-            $outdatedChecker = new OutdatedPackageChecker();
-            $rawOutdated = $outdatedChecker->getOutdatedPackages();
-            foreach ($rawOutdated as $entry) {
+            $checker = new OutdatedPackageChecker();
+            $outdated = $checker->getOutdatedPackages();
+
+            foreach ($outdated as $entry) {
                 $audit->outdatedPackages[] = new OutdatedPackage(
                     $entry['name'],
                     $entry['version'],
@@ -86,9 +103,15 @@ class AuditCommand extends Command
                 );
             }
         } catch (\Throwable $e) {
-            $output->writeln("⚠ Could not retrieve outdated packages: {$e->getMessage()}");
+            echo "[warn] Could not retrieve outdated packages: " . $e->getMessage() . "\n";
         }
 
+        // Console summary
+        echo "✔ Used: " . count($audit->usedPackages) . "\n";
+        echo "⚠ Unused: " . count($audit->unusedPackages) . "\n";
+        echo "🔺 Outdated: " . count($audit->outdatedPackages) . "\n";
+
+        // Optional markdown output
         if ($outputFile) {
             $report = "# Dependency Audit Report\n\n";
             $report .= "## ✅ Used Packages\n";
@@ -99,14 +122,15 @@ class AuditCommand extends Command
             foreach ($audit->unusedPackages as $p) {
                 $report .= "- $p\n";
             }
-            $report .= "\n## 🚫 Outdated Packages\n";
+            $report .= "\n## 🔺 Outdated Packages\n";
             foreach ($audit->outdatedPackages as $pkg) {
                 $report .= "- `{$pkg->name}` ({$pkg->currentVersion} → {$pkg->latestVersion})\n";
             }
-
             file_put_contents($outputFile, $report);
+            echo "[✓] Markdown report saved to: $outputFile\n";
         }
 
+        // Optional JSON output
         if ($outputJson) {
             $jsonData = [
                 'used' => $audit->usedPackages,
@@ -117,33 +141,35 @@ class AuditCommand extends Command
                     'latestVersion' => $p->latestVersion,
                 ], $audit->outdatedPackages),
             ];
-            file_put_contents($outputJson, json_encode($jsonData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+            file_put_contents($outputJson, json_encode($jsonData, JSON_PRETTY_PRINT));
+            echo "[✓] JSON report saved to: $outputJson\n";
         }
 
+        // Outdated summary
         $major = array_filter($audit->outdatedPackages, fn($p) => $p->isMajorUpdate());
         $minor = array_filter($audit->outdatedPackages, fn($p) => !$p->isMajorUpdate() && $p->isMinorUpdate());
 
         if (!empty($major)) {
-            $output->writeln($output->isDecorated() ? "\n<fg=red>🔺 Major updates available:</>" : "\nMAJOR updates available:");
+            echo "\n🔺 Major updates available:\n";
             foreach ($major as $pkg) {
-                $output->writeln(" - {$pkg->name} {$pkg->currentVersion} → {$pkg->latestVersion}");
+                echo " - {$pkg->name} {$pkg->currentVersion} → {$pkg->latestVersion}\n";
             }
         }
 
         if (!empty($minor)) {
-            $output->writeln($output->isDecorated() ? "\n<fg=yellow>⚠ Minor updates available:</>" : "\nMINOR updates available:");
+            echo "\n⚠ Minor updates available:\n";
             foreach ($minor as $pkg) {
-                $output->writeln(" - {$pkg->name} {$pkg->currentVersion} → {$pkg->latestVersion}");
+                echo " - {$pkg->name} {$pkg->currentVersion} → {$pkg->latestVersion}\n";
             }
         }
 
         if ($maxOutdated !== null && count($audit->outdatedPackages) > $maxOutdated) {
-            $output->writeln("❌ Too many outdated packages: " . count($audit->outdatedPackages) . " (max allowed: $maxOutdated)");
+            echo "[✘] Too many outdated packages (" . count($audit->outdatedPackages) . "), limit: $maxOutdated\n";
             return 2;
         }
 
         if ($maxTotalPackages !== null && count($packages) > $maxTotalPackages) {
-            $output->writeln("❌ Too many total packages: " . count($packages) . " (max allowed: $maxTotalPackages)");
+            echo "[✘] Too many total packages (" . count($packages) . "), limit: $maxTotalPackages\n";
             return 3;
         }
 

@@ -2,54 +2,47 @@
 
 namespace PhpDependencyInspector\Cli;
 
+use Selfphp\Console\Contract\CommandInterface;
 use PhpDependencyInspector\Analyzer\UsageScanner;
 use PhpDependencyInspector\Composer\PackageLoader;
-use Symfony\Component\Console\Command\Command;
-use Symfony\Component\Console\Input\InputInterface;
-use Symfony\Component\Console\Input\InputOption;
-use Symfony\Component\Console\Output\OutputInterface;
 
-class AnalyseCommand extends Command
+class AnalyseCommand implements CommandInterface
 {
-    protected static $defaultName = 'analyse';
-    protected static $defaultDescription = 'Analyzes which Composer packages are actually used in your codebase.';
-
-    protected function configure(): void
+    public function getName(): string
     {
-        $this
-            ->addOption(
-                'path',
-                null,
-                InputOption::VALUE_REQUIRED,
-                'Path to the project root (defaults to current working directory)',
-                getcwd()
-            )
-            ->addOption(
-                'only-unused',
-                null,
-                InputOption::VALUE_NONE,
-                'Show only packages that are not used in the codebase'
-            )
-            ->addOption(
-                'output',
-                null,
-                InputOption::VALUE_REQUIRED,
-                'Path to save a markdown report to (optional)'
-            );
+        return 'analyse';
     }
 
-    protected function execute(InputInterface $input, OutputInterface $output): int
+    public function getDescription(): string
     {
-        $output->writeln('<info>\u{1F50D} Starting dependency analysis...</info>');
+        return 'Analyzes which Composer packages are actually used in your codebase.';
+    }
 
-        $path = $input->getOption('path');
-        if (!is_dir($path)) {
-            $output->writeln('<error>\u{274C} Invalid path specified.</error>');
-            return Command::FAILURE;
+    public function run(array $args): int
+    {
+        echo "[analyse] Starting dependency analysis ...\n";
+
+        $path = getcwd();
+        $onlyUnused = false;
+        $outputFile = null;
+
+        // Primitive Argument Parsing
+        foreach ($args as $i => $arg) {
+            if ($arg === '--path' && isset($args[$i + 1])) {
+                $path = $args[$i + 1];
+            }
+            if ($arg === '--only-unused') {
+                $onlyUnused = true;
+            }
+            if ($arg === '--output' && isset($args[$i + 1])) {
+                $outputFile = $args[$i + 1];
+            }
         }
 
-        $onlyUnused = $input->getOption('only-unused');
-        $outputFile = $input->getOption('output');
+        if (!is_dir($path)) {
+            echo "[error] Invalid path: $path\n";
+            return 1;
+        }
 
         $packageLoader = new PackageLoader();
         $packages = $packageLoader->loadPackages();
@@ -72,44 +65,42 @@ class AnalyseCommand extends Command
             if ($isUsed) {
                 $used[] = $package;
                 if (!$onlyUnused) {
-                    $output->writeln(sprintf('%-35s <info>\u2714 used</info>', $package));
+                    echo sprintf("%-35s ✔ used\n", $package);
                 }
             } else {
                 $unused[] = $package;
-                $output->writeln(sprintf('%-35s <comment>\u26A0 unused</comment>', $package));
+                echo sprintf("%-35s ⚠ unused\n", $package);
             }
         }
 
         if (!$onlyUnused) {
-            $output->writeln("\nSummary: <info>" . count($used) . " used</info>, <comment>" . count($unused) . " unused</comment>");
+            echo "\nSummary: ✔ " . count($used) . " used, ⚠ " . count($unused) . " unused\n";
         }
 
-        // Output file if specified
         if ($outputFile) {
             $report = "# Dependency Analysis Report\n\n";
-
             if (!$onlyUnused) {
-                $report .= "## \u2714 Used Packages\n";
+                $report .= "## ✔ Used Packages\n";
                 foreach ($used as $p) {
                     $report .= "- $p\n";
                 }
                 $report .= "\n";
             }
 
-            $report .= "## \u26A0 Unused Packages\n";
+            $report .= "## ⚠ Unused Packages\n";
             foreach ($unused as $p) {
                 $report .= "- $p\n";
             }
 
             $report .= "\n---\n\nTotal: " . (count($used) + count($unused)) . " packages\n";
-            $report .= "\u2714 Used: " . count($used) . "\n";
-            $report .= "\u26A0 Unused: " . count($unused) . "\n";
+            $report .= "✔ Used: " . count($used) . "\n";
+            $report .= "⚠ Unused: " . count($unused) . "\n";
 
             file_put_contents($outputFile, $report);
-            $output->writeln("\n<info>Report saved to: $outputFile</info>");
+            echo "\n[info] Report saved to: $outputFile\n";
         }
 
-        return Command::SUCCESS;
+        return 0;
     }
 
     private function isNamespaceUsed(string $namespace, array $usedNamespaces): bool
